@@ -1,6 +1,8 @@
 package minesweeper;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Minesweeper {
 
@@ -27,21 +29,17 @@ public class Minesweeper {
         return field;
     }
 
-    public void putMines(int mineCount) {
-        if (mineCount > rows * cols / 3) {  // Just not that many
-            throw new IllegalArgumentException("Too many mines");
-        }
-
+    public void mine(int mineCount) {
         generateMines(mineCount).forEach(flatCrd -> field[flatCrd / rows][flatCrd % rows] = MINE);
     }
 
     private Set<Integer> generateMines(int mineCount) {
+        final List<Integer> crdList = IntStream.range(0, rows * cols).boxed().collect(Collectors.toList());
+
         Set<Integer> mines = new HashSet<>();
-        final int cellCount = rows * cols;
-        for (int i = 1; i <= mineCount; i++) {
-            while (mines.size() < i) {
-                mines.add(RANDOM.nextInt(cellCount));
-            }
+        int count = Math.min(mineCount, rows * cols);
+        while (count-- > 0) {
+            mines.add(crdList.remove(RANDOM.nextInt(crdList.size())));
         }
         return mines;
     }
