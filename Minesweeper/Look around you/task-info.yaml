@@ -143,6 +143,116 @@ files:
         }
     }
   learner_created: false
+- name: src/minesweeper/Minesweeper.java
+  visible: true
+  text: |
+    package minesweeper;
+
+    import java.util.*;
+    import java.util.stream.Collectors;
+    import java.util.stream.IntStream;
+
+    public class Minesweeper {
+
+        private static final String SAFE_CELL = ".";
+        private static final String MINE = "X";
+        private static final List<int[]> ADJACENT_SHIFTS = List.of(
+                ar2(-1, -1), ar2(-1,0), ar2(-1, 1),
+                ar2( 0, -1), /*      */ ar2( 0, 1),
+                ar2( 1, -1), ar2(1, 0), ar2( 1, 1)
+        );
+
+        private final Random RANDOM;
+        private final String[][] field;
+        private final int rows;
+        private final int cols;
+
+        public Minesweeper(int rows, int cols) {
+            RANDOM = new Random(System.currentTimeMillis());
+            field = prepareField(rows, cols);
+            this.rows = rows;
+            this.cols = cols;
+        }
+
+        private static int[] ar2(int row, int col) {
+            return new int[]{row, col};
+        }
+
+        private static String[][] prepareField(int rows, int cols) {
+            String[][] field = new String[rows][cols];
+            for (String[] row : field) {
+                Arrays.fill(row, SAFE_CELL);
+            }
+            return field;
+        }
+
+        public void mine(int mineCount) {
+            generateMines(mineCount).forEach(this::placeMine);
+        }
+
+        private Set<Integer> generateMines(int mineCount) {
+            final List<Integer> crdList = IntStream.range(0, rows * cols).boxed().collect(Collectors.toList());
+
+            Set<Integer> mines = new HashSet<>();
+            int count = Math.min(mineCount, rows * cols);
+            while (count-- > 0) {
+                mines.add(crdList.remove(RANDOM.nextInt(crdList.size())));
+            }
+            return mines;
+        }
+
+        private void placeMine(int flatCrd) {
+            int row = flatCrd / rows;
+            int col = flatCrd % rows;
+            field[row][col] = MINE;
+
+            ADJACENT_SHIFTS.forEach(shift -> incMineCountAtCell(row + shift[0], col + shift[1]));
+        }
+
+        private void incMineCountAtCell(int row, int col) {
+            if (row >= 0 && row < rows && col >= 0 && col < cols
+                    && !field[row][col].equals(MINE)) {
+                String content = field[row][col];
+                int count = content.equals(SAFE_CELL) ? 1 : Integer.parseInt(content) + 1;
+                field[row][col] = String.valueOf(count);
+            }
+        }
+
+        public String render() {
+            StringBuilder sb = new StringBuilder();
+            for (String[] row : field) {
+                sb.append(String.join("", row));
+                sb.append('\n');
+            }
+            sb.setLength(sb.length() - 1);
+
+            return sb.toString();
+        }
+    }
+  learner_created: true
+- name: src/minesweeper/MinesweeperGameplayFacade.java
+  visible: true
+  text: |
+    package minesweeper;
+
+    import java.util.Scanner;
+
+    public class MinesweeperGameplayFacade {
+
+        public static void stage3() {
+            try (Scanner scanner = new Scanner(System.in)) {
+                Minesweeper minesweeper = new Minesweeper(9, 9);
+
+                System.out.print("How many mines do you want on the field? ");
+                minesweeper.mine(scanner.nextInt());
+                System.out.println(minesweeper.render());
+            }
+        }
+    }
+  learner_created: true
 feedback_link: https://hyperskill.org/projects/77/stages/428/implement#comment
-status: Unchecked
+status: Solved
+feedback:
+  message: Congratulations!
+  time: Thu, 20 May 2021 00:13:22 UTC
 record: -1
