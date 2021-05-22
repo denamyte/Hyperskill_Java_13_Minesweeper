@@ -8,6 +8,10 @@ public class Minesweeper {
 
     private static final char SAFE_CELL = '.';
     private static final char MINE = 'X';
+    private static final char PIPE = '│';
+    private static final char ASTERISK = '*';
+    private static final String UNDERLINE = "—│—————————│";
+    private static final String NUMBER_LINE = " │123456789│";
     private static final List<int[]> ADJACENT_SHIFTS = List.of(
             shift(-1, -1), shift(-1, 0), shift(-1, 1),
             shift( 0, -1), /*         */ shift( 0, 1),
@@ -18,6 +22,9 @@ public class Minesweeper {
     private final char[][] field;
     private final int rows;
     private final int cols;
+
+    private Set<Integer> mineHashSet = new HashSet<>();
+    private Set<Integer> mineGuessHashSet = new HashSet<>();
 
     public Minesweeper(int rows, int cols) {
         RANDOM = new Random(System.currentTimeMillis());
@@ -71,6 +78,36 @@ public class Minesweeper {
     }
 
     public String render() {
-        return Arrays.stream(field).map(String::valueOf).collect(Collectors.joining("\n"));
+        StringBuilder sb = new StringBuilder(NUMBER_LINE);
+        sb.append(UNDERLINE);
+        for (int row = 0; row < rows; row++) {
+            sb.append(row + 1).append(PIPE);
+            for (int col = 0; col < cols; col++) {
+                char sym = field[row][col];
+
+                if (isUserMarked(row, col)) {
+
+                    // TODO: 5/22/21 Continue here
+
+                }
+
+
+                sb.append(sym);
+            }
+            sb.append(PIPE);
+        }
+        sb.append(UNDERLINE);
+        return sb.toString();
     }
+
+    private int crdToHash(int row, int col) {
+        return 100 * row + col;
+    }
+
+    private boolean isUserMarked(int row, int col) {
+        return mineGuessHashSet.contains(crdToHash(row, col));
+    }
+//    private boolean isNumber(int row, int col) {
+//        return field[row][col] >= '1' && field[row][col] <= '8';
+//    }
 }
