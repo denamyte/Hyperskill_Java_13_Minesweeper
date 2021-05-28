@@ -3,6 +3,7 @@ package minesweeper;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class Minesweeper {
 
@@ -11,12 +12,9 @@ public class Minesweeper {
     private static final char USER_MARK = '*';
     private static final char SAFE_CELL = '/';
 
-    private static final char PIPE = '│';
-    private static final String UNDERLINE = "—│—————————│";
-    private static final String NUMBER_LINE = "\n │123456789│\n";
-
-    private static final String FREE_CMD = "free";
-    private static final String MINE_CMD = "mine";
+    private static final char PIPE = '|';
+    private static final String UNDERLINE = "-|---------|";
+    private static final String NUMBER_LINE = "\n |123456789|\n";
 
     private static final List<int[]> ADJACENT_SHIFTS = List.of(
             shift(-1, -1), shift(-1, 0), shift(-1, 1),
@@ -29,25 +27,17 @@ public class Minesweeper {
     private char[][] exploredField;
     private final int rows;
     private final int cols;
+    private final int cellsCount;
 
     private int mineCount;
     private int exploredMinesCount;
     private int exploredSavesCount;
 
-    private Set<Integer> mineSet = new HashSet<>();
+    private Set<Integer> mineSet;
     private Set<Integer> mineGuessSet = new HashSet<>();
 
-    static class Command {
-        public final int row;
-        public final int col;
-        public final String cmdString;
-
-        public Command(String rawCmd) {
-            final String[] cmdAr = rawCmd.split("\\s+");
-            col = Integer.parseInt(cmdAr[0]) - 1;
-            row = Integer.parseInt(cmdAr[1]) - 1;
-            cmdString = cmdAr[2];
-        }
+    enum MoveResult {
+        OK, EXPLODED
     }
 
     public Minesweeper(int rows, int cols) {
@@ -55,6 +45,7 @@ public class Minesweeper {
         prepareFields(rows, cols);
         this.rows = rows;
         this.cols = cols;
+        cellsCount = rows * cols;
     }
 
     private static int[] shift(int row, int col) {
@@ -63,87 +54,121 @@ public class Minesweeper {
 
     private void prepareFields(int rows, int cols) {
         field = new char[rows][cols];
-        for (char[] row : field) {
-            Arrays.fill(row, UNKNOWN_CELL);
-        }
-        this.exploredField = field.clone();
+        exploredField = new char[rows][cols];
+        Stream.of(field, exploredField).forEach(f -> {
+            for (char[] row : f) {
+                Arrays.fill(row, UNKNOWN_CELL);
+            }
+        });
     }
 
-    @Deprecated
-    public void mine(int mineCount) {
+    public void mine5(Command cmd, int mineCount) {
         this.mineCount = mineCount;
-        generateMines(mineCount).forEach(this::placeMine);
+        generateMineHashes(cmd, mineCount);
+        placeMines();
     }
 
-    public void mine5(String safeRawCrd, int mineCount) {
+    private void generateMineHashes(Command cmd, int mineCount) {
+        final List<Integer> crdHashes = IntStream.range(0, cellsCount).boxed().collect(Collectors.toList());
+        crdHashes.remove(crdToHash(cmd.row, cmd.col));
 
-        // TODO: 5/26/21 Create a Command and place mines except the coordinates in safeRawCrd
-
-        this.mineCount = mineCount;
-        generateMines(mineCount).forEach(this::placeMine);
+        int count = Math.min(mineCount, cellsCount - 1);
+        this.mineSet = IntStream.generate(() -> crdHashes.remove(RANDOM.nextInt(crdHashes.size())))
+                .limit(count)
+                .boxed()
+                .collect(Collectors.toSet());
     }
 
-    @Deprecated
-    private Set<Integer> generateMines(int mineCount) {
-        final List<Integer> crdList = IntStream.range(0, rows * cols).boxed().collect(Collectors.toList());
+    private void placeMines() {
+        mineSet.forEach(hash -> {
+            int[] crd = hashToCrd(hash);
+            int row = crd[0];
+            int col = crd[1];
 
-        Set<Integer> mines = new HashSet<>();
-        int count = Math.min(mineCount, rows * cols);
-        while (count-- > 0) {
-            mines.add(crdList.remove(RANDOM.nextInt(crdList.size())));
-        }
-        return mines;
-    }
-
-    private Set<Integer> generateMines5(int mineCount) {
-
-        // TODO: 5/26/21 Accept Command and exclude its coordinates from available ones for mine generating
-
-        final List<Integer> crdList = IntStream.range(0, rows * cols).boxed().collect(Collectors.toList());
-
-        Set<Integer> mines = new HashSet<>();
-        int count = Math.min(mineCount, rows * cols);
-        while (count-- > 0) {
-            mines.add(crdList.remove(RANDOM.nextInt(crdList.size())));
-        }
-        return mines;
-    }
-
-    private void placeMine(int flatCrd) {
-        int row = flatCrd / rows;
-        int col = flatCrd % rows;
-
-        field[row][col] = MINE;
-        mineSet.add(crdToHash(row, col));
-
-        ADJACENT_SHIFTS.forEach(shift -> incMineCountAtCell(row + shift[0], col + shift[1]));
+            field[row][col] = MINE;
+            ADJACENT_SHIFTS.forEach(shift -> incMineCountAtCell(row + shift[0], col + shift[1]));
+        });
     }
 
     private void incMineCountAtCell(int row, int col) {
-        if (row >= 0 && row < rows && col >= 0 && col < cols
-                && !(field[row][col] == MINE)) {
+        if (crdInRange(row, col) && !(field[row][col] == MINE)) {
 
             final char curChar = field[row][col];
             field[row][col] = curChar == UNKNOWN_CELL ? '1' : (char) (curChar + 1);
         }
     }
 
-    public boolean makeUserMove(int row, int col) {
-        if (isNumber(row, col)) {
-            return false;
+    private boolean crdInRange(int row, int col) {
+        return row >= 0 && row < rows && col >= 0 && col < cols;
+    }
+
+    public MoveResult makeUserMove5(Command cmd) {
+        final int hash = crdToHash(cmd.row, cmd.col);
+        switch (cmd.cmdString) {
+            case Command.FREE_CMD: {
+                if (mineGuessSet.contains(hash)) {
+                    break;
+                }
+                if (isMine(cmd.row, cmd.col)) {
+                    explodeField();
+                    return MoveResult.EXPLODED;
+                }
+                freeCells(cmd.row, cmd.col);
+            }
+            break;
+            case Command.MINE_CMD:
+            default: {
+                if (mineGuessSet.remove(hash)) {
+                    exploredField[cmd.row][cmd.col] = UNKNOWN_CELL;
+                } else {
+                    exploredField[cmd.row][cmd.col] = USER_MARK;
+                    mineGuessSet.add(hash);
+                }
+            }
         }
-        final int hash = crdToHash(row, col);
-        if (mineGuessSet.remove(hash)) {
-            field[row][col] = UNKNOWN_CELL;
-        } else {
-            field[row][col] = USER_MARK;
-            mineGuessSet.add(hash);
+        return MoveResult.OK;
+    }
+
+    private void explodeField() {
+        mineSet.stream().map(this::hashToCrd).forEach(crd -> {
+            exploredField[crd[0]][crd[1]] = MINE;
+        });
+    }
+
+    private void freeCells(int row, int col) {
+        if (!crdInRange(row, col) || exploredField[row][col] != UNKNOWN_CELL) {
+            return;
         }
-        return true;
+        boolean unknown = field[row][col] == UNKNOWN_CELL;
+        exploredField[row][col] = unknown
+                ? SAFE_CELL
+                : field[row][col];
+
+        exploredSavesCount++;
+
+        // TODO: 5/28/21
+        //  Get rid of this error:
+        //  The last grid contains '*' and '/' characters that are next to each other. This situation is impossible. If there is '*' character that is next to '/' it should be replaced to '/' or to a number....
+//   |123456789|
+//  -|---------|
+//  1|/////////|
+//  2|/////////|
+//  3|/////////|
+//  4|////////*|
+//  5|/////////|
+//  6|///*/////|
+//  7|////////*|
+//  8|11///////|
+//  9|.1///////|
+//  -|---------|
+
+        if (unknown) {
+            ADJACENT_SHIFTS.forEach(shift -> freeCells(row + shift[0], col + shift[1]));
+        }
     }
 
     public boolean demined() {
-        return mineGuessSet.equals(mineSet);
+        return exploredSavesCount == cellsCount - mineCount || mineGuessSet.equals(mineSet);
     }
 
     @Deprecated
@@ -171,11 +196,12 @@ public class Minesweeper {
 
     public String render5() {
         StringBuilder sb = new StringBuilder(NUMBER_LINE);
-        sb.append(UNDERLINE);
+        sb.append(UNDERLINE).append('\n');
         for (int row = 0; row < rows; row++) {
             sb.append(row + 1).append(PIPE);
-            sb.append(field[row]);
+            sb.append(exploredField[row]);
             sb.append(PIPE);
+            sb.append('\n');
         }
         sb.append(UNDERLINE);
         return sb.toString();
@@ -196,4 +222,13 @@ public class Minesweeper {
     private boolean isNumber(int row, int col) {
         return field[row][col] >= '1' && field[row][col] <= '8';
     }
+
+    private boolean isMine(int row, int col) {
+        return field[row][col] == MINE;
+    }
+
+    private boolean isSafeCell(int row, int col) {
+        return field[row][col] == SAFE_CELL;
+    }
 }
+
