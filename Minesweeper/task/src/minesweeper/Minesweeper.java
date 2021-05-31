@@ -16,6 +16,8 @@ public class Minesweeper {
     private static final String UNDERLINE = "-|---------|";
     private static final String NUMBER_LINE = "\n |123456789|\n";
 
+    private static final Collection<Character> EXPLORABLE_CELL_TYPES = List.of(UNKNOWN_CELL, USER_MARK);
+
     private static final List<int[]> ADJACENT_SHIFTS = List.of(
             shift(-1, -1), shift(-1, 0), shift(-1, 1),
             shift( 0, -1), /*         */ shift( 0, 1),
@@ -30,8 +32,7 @@ public class Minesweeper {
     private final int cellsCount;
 
     private int mineCount;
-    private int exploredMinesCount;
-    private int exploredSavesCount;
+    private int exploredCellsCount;
 
     private Set<Integer> mineSet;
     private Set<Integer> mineGuessSet = new HashSet<>();
@@ -62,15 +63,15 @@ public class Minesweeper {
         });
     }
 
-    public void mine5(Command cmd, int mineCount) {
+    public void mine(Command cmd, int mineCount) {
         this.mineCount = mineCount;
         generateMineHashes(cmd, mineCount);
         placeMines();
     }
 
-    private void generateMineHashes(Command cmd, int mineCount) {
+    private void generateMineHashes(Command excludedCellCmd, int mineCount) {
         final List<Integer> crdHashes = IntStream.range(0, cellsCount).boxed().collect(Collectors.toList());
-        crdHashes.remove(crdToHash(cmd.row, cmd.col));
+        crdHashes.remove(crdToHash(excludedCellCmd.row, excludedCellCmd.col));
 
         int count = Math.min(mineCount, cellsCount - 1);
         this.mineSet = IntStream.generate(() -> crdHashes.remove(RANDOM.nextInt(crdHashes.size())))
@@ -102,41 +103,37 @@ public class Minesweeper {
         return row >= 0 && row < rows && col >= 0 && col < cols;
     }
 
-    public MoveResult makeUserMove5(Command cmd) {
+    public MoveResult makeUserMove(Command cmd) {
         final int hash = crdToHash(cmd.row, cmd.col);
         switch (cmd.cmdString) {
-            case Command.FREE_CMD: {
+            case Command.FREE_CMD:
                 if (mineGuessSet.contains(hash)) {
                     break;
                 }
-                if (isMine(cmd.row, cmd.col)) {
+                if (field[cmd.row][cmd.col] == MINE) {
                     explodeField();
                     return MoveResult.EXPLODED;
                 }
-                freeCells(cmd.row, cmd.col);
-            }
-            break;
+                freeCell(cmd.row, cmd.col);
+                break;
             case Command.MINE_CMD:
-            default: {
+            default:
                 if (mineGuessSet.remove(hash)) {
                     exploredField[cmd.row][cmd.col] = UNKNOWN_CELL;
                 } else {
                     exploredField[cmd.row][cmd.col] = USER_MARK;
                     mineGuessSet.add(hash);
                 }
-            }
         }
         return MoveResult.OK;
     }
 
     private void explodeField() {
-        mineSet.stream().map(this::hashToCrd).forEach(crd -> {
-            exploredField[crd[0]][crd[1]] = MINE;
-        });
+        mineSet.stream().map(this::hashToCrd).forEach(crd -> exploredField[crd[0]][crd[1]] = MINE);
     }
 
-    private void freeCells(int row, int col) {
-        if (!crdInRange(row, col) || exploredField[row][col] != UNKNOWN_CELL) {
+    private void freeCell(int row, int col) {
+        if (!crdInRange(row, col) || !EXPLORABLE_CELL_TYPES.contains(exploredField[row][col])) {
             return;
         }
         boolean unknown = field[row][col] == UNKNOWN_CELL;
@@ -144,57 +141,18 @@ public class Minesweeper {
                 ? SAFE_CELL
                 : field[row][col];
 
-        exploredSavesCount++;
-
-        // TODO: 5/28/21
-        //  Get rid of this error:
-        //  The last grid contains '*' and '/' characters that are next to each other. This situation is impossible. If there is '*' character that is next to '/' it should be replaced to '/' or to a number....
-//   |123456789|
-//  -|---------|
-//  1|/////////|
-//  2|/////////|
-//  3|/////////|
-//  4|////////*|
-//  5|/////////|
-//  6|///*/////|
-//  7|////////*|
-//  8|11///////|
-//  9|.1///////|
-//  -|---------|
+        exploredCellsCount++;
 
         if (unknown) {
-            ADJACENT_SHIFTS.forEach(shift -> freeCells(row + shift[0], col + shift[1]));
+            ADJACENT_SHIFTS.forEach(shift -> freeCell(row + shift[0], col + shift[1]));
         }
     }
 
-    public boolean demined() {
-        return exploredSavesCount == cellsCount - mineCount || mineGuessSet.equals(mineSet);
+    public boolean isDemined() {
+        return exploredCellsCount == cellsCount - mineCount || mineGuessSet.equals(mineSet);
     }
 
-    @Deprecated
     public String render() {
-        StringBuilder sb = new StringBuilder(NUMBER_LINE);
-        sb.append(UNDERLINE).append('\n');
-        for (int row = 0; row < rows; row++) {
-            sb.append(row + 1).append(PIPE);
-            for (int col = 0; col < cols; col++) {
-                char sym;
-                if (isUserMarked(row, col)) {
-                    sym = USER_MARK;
-                } else if (field[row][col] == MINE) {
-                    sym = UNKNOWN_CELL;
-                } else {
-                    sym = field[row][col];
-                }
-                sb.append(sym);
-            }
-            sb.append(PIPE).append('\n');
-        }
-        sb.append(UNDERLINE);
-        return sb.toString();
-    }
-
-    public String render5() {
         StringBuilder sb = new StringBuilder(NUMBER_LINE);
         sb.append(UNDERLINE).append('\n');
         for (int row = 0; row < rows; row++) {
@@ -213,22 +171,6 @@ public class Minesweeper {
 
     private int[] hashToCrd(int hash) {
         return new int[]{hash / this.cols, hash % this.cols};
-    }
-
-    private boolean isUserMarked(int row, int col) {
-        return mineGuessSet.contains(crdToHash(row, col));
-    }
-
-    private boolean isNumber(int row, int col) {
-        return field[row][col] >= '1' && field[row][col] <= '8';
-    }
-
-    private boolean isMine(int row, int col) {
-        return field[row][col] == MINE;
-    }
-
-    private boolean isSafeCell(int row, int col) {
-        return field[row][col] == SAFE_CELL;
     }
 }
 
